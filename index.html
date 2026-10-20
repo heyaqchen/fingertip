@@ -502,24 +502,41 @@
       const context = await getAudioContext();
       const now = context.currentTime;
       const base = frequency(midi);
+      // Low fundamentals are barely reproduced by tablet speakers. Keep the
+      // pitch audible through sustained upper partials, without a bass thump.
+      const bass = Math.max(0, Math.min(1, (60 - midi) / 24));
+      const length = Math.max(.08, duration);
+      const attack = Math.min(.009 + .021 * bass, length * .2);
       const envelope = context.createGain();
       envelope.gain.setValueAtTime(0.0001, now);
-      envelope.gain.exponentialRampToValueAtTime(0.24, now + 0.009);
-      envelope.gain.exponentialRampToValueAtTime(0.095, now + 0.16);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      const peak = .24 - .07 * bass;
+      const release = Math.min(.16, length * .25);
+      envelope.gain.exponentialRampToValueAtTime(peak, now + attack);
+      envelope.gain.exponentialRampToValueAtTime(peak * (.396 + .18 * bass), now + Math.min(.16 + .28 * bass, length * .45));
+      envelope.gain.exponentialRampToValueAtTime(.0001 + .022 * bass, now + length - release);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, now + length);
       envelope.connect(context.destination);
       sounding.add(envelope);
-      [1,2,3,4,5].forEach((partial, i) => {
+      const normal = [1,.29,.13,.06,.03,0,0,0,0,0,0,0];
+      const low = [.52,.46,.32,.24,.17,.12,.085,.06,.04,.028,.018,.012];
+      const weights = normal.map((value,i) => value * (1-bass) + low[i] * bass);
+      const scale = 1.51 / weights.reduce((sum,value) => sum + value,0);
+      const voices = [];
+      weights.forEach((weight, i) => {
+        if (!weight || base * (i+1) > context.sampleRate * .45) return;
+        const partial = i + 1;
         const oscillator = context.createOscillator();
         const partialGain = context.createGain();
         oscillator.type = 'sine';
         oscillator.frequency.value = base * partial;
-        partialGain.gain.value = [1,.29,.13,.06,.03][i];
+        partialGain.gain.setValueAtTime(weight * scale, now);
+        partialGain.gain.exponentialRampToValueAtTime(Math.max(.00001, weight * scale * Math.exp(-bass * i * .08 * length)), now + length);
         oscillator.connect(partialGain);
         partialGain.connect(envelope);
         oscillator.start(now);
-        oscillator.stop(now + duration + .03);
-        if (i === 0) oscillator.onended = () => { sounding.delete(envelope); envelope.disconnect(); };
+        voices.push([oscillator,partialGain]);
+        oscillator.stop(now + length + .03);
+        if (i === 0) oscillator.onended = () => { sounding.delete(envelope); envelope.disconnect(); voices.forEach(([osc,gain])=>{osc.disconnect();gain.disconnect();}); };
       });
     } catch (error) {
       qs('#soundLabel').textContent = '声音不可用';
@@ -577,7 +594,7 @@
     document.querySelectorAll('.guide-label').forEach(el => el.classList.toggle('current', Number(el.dataset.midi) === midi));
     renderNotation(midi);
     if (qs('.lesson-tab.active')?.dataset.lesson === 'names') renderLesson('names');
-    playNote(midi, fromDemo ? .8 : 1.2);
+    playNote(midi, fromDemo ? .8 : 1.2 + Math.max(0, Math.min(1, (60-midi)/24)) * 1.4);
     if (!fromDemo && !window.FT?.handleKey(midi)) handlePractice(midi);
   }
 
