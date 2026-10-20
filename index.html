@@ -27,8 +27,10 @@
 @media(max-width:800px){.topbar{height:auto;min-height:80px;flex-wrap:wrap;padding:15px 0;gap:12px}.topbar-right{margin-left:auto}.mode-pill{order:3;margin:auto}.intro{min-height:195px}.learning-card{min-height:300px}.symbol-grid{grid-template-columns:repeat(8,minmax(0,1fr))}.symbol-grid button{height:55px}.composition{padding:18px 14px}.workspace-head{align-items:start;gap:8px}.workspace-head h2{font-size:18px}.work-meta{gap:10px;flex-wrap:wrap}.work-meta #saveStatus{width:100%;margin:0}.event-editor{flex-wrap:wrap}.event-editor>span{width:100%;max-width:none}.event-editor label{min-width:120px}.import-dialog{padding:18px}.dialog-heading h2{font-size:18px}.import-selectors{flex-wrap:wrap}.import-selectors label:first-child{flex-basis:100%}.import-selectors input{width:80px}.import-result-head{display:block}.source-preview{max-height:350px}.source-preview iframe{height:340px}.import-drop{gap:9px}.import-drop input{max-width:180px}.engine-status{margin:0}.import-empty{padding:24px 12px}}
 @media(max-width:480px){.mode-pill{width:100%}.mode-pill button{flex:1}.intro{min-height:180px}.intro h1{font-size:29px}.symbol-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.symbol-grid button{height:47px}.workspace-head{flex-direction:column}.work-meta label:first-child{max-width:none;flex-basis:100%}.tool-spacer{display:none}.workspace-tools button{padding:8px}.quiz-options>button{font-size:10px}.dialog-heading h2{font-size:17px}.import-drop input{max-width:100%}.import-selectors{gap:8px}.import-dialog{width:96vw;padding:14px}.import-buttons button{padding:8px}.manual-entry{flex-wrap:wrap}.manual-entry input{min-width:160px}.event-editor label{min-width:100px}}
 .keyboard{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.piano-key{-webkit-touch-callout:none;-webkit-user-select:none}
+.timbre-control{position:relative;display:flex;align-items:center;gap:7px}.timbre-label{font-size:11px;color:#747e76}.timbre-control select{max-width:185px;min-height:38px;padding:7px 25px 7px 10px;border:1px solid #d8dfd7;border-radius:20px;background:#fffdf8;color:#34483e;font-size:11px}.timbre-control [role=status]{position:absolute;top:calc(100% + 4px);right:0;font-size:9px;color:#808a81;white-space:nowrap}.sample-credits{margin-top:28px;color:#7a827b;font-size:11px;line-height:1.8}.sample-credits summary{cursor:pointer}.sample-credits a{color:#4b6957}.topbar-right{gap:12px}.topbar-caption{display:none}@media(max-width:900px){.topbar{height:auto;min-height:100px;flex-wrap:wrap;padding-top:18px;padding-bottom:24px;gap:14px}.topbar-right{margin-left:auto}.mode-pill{order:3;margin:auto}}@media(max-width:480px){.topbar-right{width:100%;justify-content:space-between;order:2}.mode-pill{order:3;margin-top:8px}.timbre-control select{max-width:185px}}
 
 </style>
+  
   
   
   
@@ -55,6 +57,15 @@
         <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true" title="切换声音">
           <span class="sound-icon" aria-hidden="true">♫</span><span id="soundLabel">声音开启</span>
         </button>
+        <div class="timbre-control">
+          <label class="timbre-label" for="timbreSelect">音色</label>
+          <select id="timbreSelect" aria-label="选择钢琴音色">
+            <option value="salamander">Salamander · C5</option>
+            <option value="headroom">Headroom Piano · C3</option>
+            <option value="synth">轻量合成</option>
+          </select>
+          <span id="timbreStatus" role="status" aria-live="polite"></span>
+        </div>
       </div>
     </header>
 
@@ -145,6 +156,7 @@
       </section>
     </main>
 
+    <details class="sample-credits"><summary>钢琴音色来源与许可</summary><p>Salamander Grand Piano · Yamaha C5，由 Alexander Holm 录制，<a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC BY 3.0</a>。<a href="https://github.com/Tonejs/audio/tree/master/salamander" target="_blank" rel="noopener">采样来源</a>。</p><p>Headroom Piano · Yamaha C3，由 Bengt Nilsson 录制，kinwie 整理，<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>。<a href="https://github.com/sfzinstruments/BengtNilsson.HeadroomPiano" target="_blank" rel="noopener">原始音色库</a>。</p><p>本站使用轻量采样版本：每小三度采样、单力度层、截取至 6 秒并转为 32 kHz / 96 kbps MP3；其余音高通过移调播放。Headroom 使用 LEVEL3 CLOSE 采样。未包含原库的全部力度层和效果。</p></details>
     <footer><span>fingertip<span class="brand-dot">.</span></span><span>让音乐，变得触手可及。</span><span>Made for the first note.</span></footer>
   </div>
 <script>
@@ -500,6 +512,8 @@
     if (!soundEnabled) return;
     try {
       const context = await getAudioContext();
+      if (!soundEnabled) return;
+      if (window.FTTimbre?.play(context, midi, duration, sounding)) return;
       const now = context.currentTime;
       const base = frequency(midi);
       // Low fundamentals are barely reproduced by tablet speakers. Keep the
@@ -640,6 +654,7 @@
       soundEnabled = !soundEnabled;
       qs('#soundToggle').setAttribute('aria-pressed', String(soundEnabled));
       qs('#soundLabel').textContent = soundEnabled ? '声音开启' : '声音关闭';
+      if (!soundEnabled) window.FTCore.stop();
     });
     qs('#songSelect').addEventListener('change', event => {
       stopDemo();
@@ -706,6 +721,10 @@
   qs('.piano-key[data-midi="60"]').classList.add('active');
   bindEvents();
   window.FTCore = {
+    context: () => {
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      return audioContext;
+    },
     sound: playNote,
     unlock: getAudioContext,
     stop: () => { sounding.forEach(gain => { gain.gain.cancelScheduledValues(audioContext.currentTime); gain.gain.setTargetAtTime(.0001,audioContext.currentTime,.01); }); },
@@ -718,6 +737,105 @@
     }
   };
   requestAnimationFrame(() => scrollToRange('middle', false));
+})();
+
+</script>
+<script>
+(() => {
+  'use strict';
+  const select = document.querySelector('#timbreSelect');
+  const status = document.querySelector('#timbreStatus');
+  const banks = new Map();
+  const pending = new Map();
+  let selected = 'salamander';
+  let generation = 0;
+  let master;
+  try { const saved = localStorage.getItem('fingertip-timbre'); if (['salamander','headroom','synth'].includes(saved)) selected = saved; } catch {}
+  select.value = selected;
+
+  async function load(id) {
+    if (banks.has(id)) return banks.get(id);
+    if (pending.has(id)) return pending.get(id);
+    const task = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await fetch(`piano-${id}.json`, {signal:controller.signal});
+        if (!response.ok) throw new Error(`Sample pack ${response.status}`);
+        const pack = await response.json();
+        const context = window.FTCore.context();
+        const result = new Map();
+        // Decode in small batches to limit peak memory on tablets.
+        const entries = Object.entries(pack.samples);
+        for (let i = 0; i < entries.length; i += 3) {
+          await Promise.all(entries.slice(i,i+3).map(async ([key,encoded]) => {
+            const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+            result.set(Number(key), await context.decodeAudioData(bytes.buffer));
+          }));
+        }
+        if (result.size !== 30) throw new Error('Incomplete sample pack');
+        banks.set(id,result);
+        return result;
+      } finally { clearTimeout(timer); }
+    })();
+    pending.set(id,task);
+    try { return await task; } finally { pending.delete(id); }
+  }
+
+  async function choose() {
+    const token = ++generation;
+    selected = select.value;
+    window.FTCore.stop();
+    try { localStorage.setItem('fingertip-timbre',selected); } catch {}
+    if (selected === 'synth') { status.textContent = '无需加载'; return; }
+    status.textContent = '加载中 · 暂用合成';
+    try {
+      await load(selected);
+      if (token === generation) status.textContent = '实录音色已就绪';
+    } catch (error) {
+      if (token === generation) status.textContent = '加载失败 · 暂用合成，请重新选择重试';
+      console.warn('Piano sample loading failed',error);
+    }
+  }
+
+  window.FTTimbre = {
+    play(context,midi,duration,sounding) {
+      const bank = banks.get(selected);
+      if (selected === 'synth' || !bank) return false;
+      const root = Math.max(21,Math.min(108,21 + Math.round((midi-21)/3)*3));
+      const buffer = bank.get(root);
+      if (!buffer) return false;
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate.value = 2 ** ((midi-root)/12);
+      const gain = context.createGain();
+      const now = context.currentTime;
+      const length = Math.max(.08,Math.min(duration,buffer.duration/source.playbackRate.value));
+      const level = selected === 'headroom' ? .85 : .65;
+      gain.gain.setValueAtTime(.0001,now);
+      gain.gain.exponentialRampToValueAtTime(level,now+.004);
+      gain.gain.setValueAtTime(level,now+Math.max(.005,length-Math.min(.24,length*.35)));
+      gain.gain.exponentialRampToValueAtTime(.0001,now+length);
+      source.connect(gain);
+      if (!master) {
+        master = context.createDynamicsCompressor();
+        master.threshold.value = -10;
+        master.knee.value = 10;
+        master.ratio.value = 6;
+        master.attack.value = .003;
+        master.release.value = .18;
+        master.connect(context.destination);
+      }
+      gain.connect(master);
+      sounding.add(gain);
+      source.onended = () => { sounding.delete(gain); source.disconnect(); gain.disconnect(); };
+      source.start(now);
+      source.stop(now+length+.02);
+      return true;
+    }
+  };
+  select.addEventListener('change',choose);
+  choose();
 })();
 
 </script>
