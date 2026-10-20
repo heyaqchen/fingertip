@@ -26,6 +26,7 @@
 @media(max-width:1100px){.symbol-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.symbol-grid button{height:45px}.symbol-grid span{font-size:21px}.topbar{gap:15px}.mode-pill button{padding:9px 15px}.two-controls{gap:4px}.two-controls select{padding:7px 4px}.learning-card{min-height:390px}.workspace-tools{gap:4px}.import-columns{flex-direction:column}.source-preview,.decomposition{width:100%;flex:auto}}
 @media(max-width:800px){.topbar{height:auto;min-height:80px;flex-wrap:wrap;padding:15px 0;gap:12px}.topbar-right{margin-left:auto}.mode-pill{order:3;margin:auto}.intro{min-height:195px}.learning-card{min-height:300px}.symbol-grid{grid-template-columns:repeat(8,minmax(0,1fr))}.symbol-grid button{height:55px}.composition{padding:18px 14px}.workspace-head{align-items:start;gap:8px}.workspace-head h2{font-size:18px}.work-meta{gap:10px;flex-wrap:wrap}.work-meta #saveStatus{width:100%;margin:0}.event-editor{flex-wrap:wrap}.event-editor>span{width:100%;max-width:none}.event-editor label{min-width:120px}.import-dialog{padding:18px}.dialog-heading h2{font-size:18px}.import-selectors{flex-wrap:wrap}.import-selectors label:first-child{flex-basis:100%}.import-selectors input{width:80px}.import-result-head{display:block}.source-preview{max-height:350px}.source-preview iframe{height:340px}.import-drop{gap:9px}.import-drop input{max-width:180px}.engine-status{margin:0}.import-empty{padding:24px 12px}}
 @media(max-width:480px){.mode-pill{width:100%}.mode-pill button{flex:1}.intro{min-height:180px}.intro h1{font-size:29px}.symbol-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.symbol-grid button{height:47px}.workspace-head{flex-direction:column}.work-meta label:first-child{max-width:none;flex-basis:100%}.tool-spacer{display:none}.workspace-tools button{padding:8px}.quiz-options>button{font-size:10px}.dialog-heading h2{font-size:17px}.import-drop input{max-width:100%}.import-selectors{gap:8px}.import-dialog{width:96vw;padding:14px}.import-buttons button{padding:8px}.manual-entry{flex-wrap:wrap}.manual-entry input{min-width:160px}.event-editor label{min-width:100px}}
+.keyboard{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.piano-key{-webkit-touch-callout:none;-webkit-user-select:none}
 
 </style>
   
@@ -354,8 +355,15 @@
   let activeSong = 'twinkle';
   let demoTimers = [];
   let demoRunning = false;
-  let dragPointer = null;
-  let lastDraggedMidi = null;
+  const activePointers = new Map();
+
+  function highlightHeldKeys(fallback = selectedMidi) {
+    const notes = new Set(activePointers.values());
+    if (!notes.size && fallback !== null) notes.add(fallback);
+    document.querySelectorAll('.piano-key').forEach(key => {
+      key.classList.toggle('active', notes.has(Number(key.dataset.midi)));
+    });
+  }
   const keyPositions = new Map();
 
   const songs = {
@@ -565,9 +573,7 @@
 
   function selectNote(midi, fromDemo = false) {
     selectedMidi = midi;
-    document.querySelectorAll('.piano-key.active').forEach(el => el.classList.remove('active'));
-    const key = document.querySelector(`.piano-key[data-midi="${midi}"]`);
-    if (key) key.classList.add('active');
+    highlightHeldKeys(midi);
     document.querySelectorAll('.guide-label').forEach(el => el.classList.toggle('current', Number(el.dataset.midi) === midi));
     renderNotation(midi);
     if (qs('.lesson-tab.active')?.dataset.lesson === 'names') renderLesson('names');
@@ -633,23 +639,41 @@
     const keyboard = qs('#keyboard');
     keyboard.addEventListener('pointerdown', event => {
       const key = event.target.closest('.piano-key');
-      if (!key) return;
+      if (!key || (event.pointerType === 'mouse' && event.button !== 0)) return;
       event.preventDefault();
-      dragPointer = event.pointerId;
-      lastDraggedMidi = Number(key.dataset.midi);
-      selectNote(lastDraggedMidi);
+      const midi = Number(key.dataset.midi);
+      activePointers.set(event.pointerId, midi);
+      keyboard.setPointerCapture(event.pointerId);
+      selectNote(midi);
     });
     window.addEventListener('pointermove', event => {
-      if (dragPointer !== event.pointerId) return;
-      if (event.buttons === 0) { dragPointer = null; lastDraggedMidi = null; return; }
+      if (!activePointers.has(event.pointerId)) return;
+      if (event.pointerType === 'mouse' && event.buttons === 0) { endDrag(event); return; }
+      if (event.cancelable) event.preventDefault();
       const key = document.elementFromPoint(event.clientX,event.clientY)?.closest('.piano-key');
-      if (!key) return;
+      if (!key || !keyboard.contains(key)) {
+        activePointers.set(event.pointerId, null);
+        highlightHeldKeys(null);
+        return;
+      }
       const midi = Number(key.dataset.midi);
-      if (midi !== lastDraggedMidi) { lastDraggedMidi = midi; selectNote(midi); }
-    });
-    const endDrag = event => { if (dragPointer === event.pointerId) { dragPointer = null; lastDraggedMidi = null; } };
+      if (midi !== activePointers.get(event.pointerId)) {
+        activePointers.set(event.pointerId, midi);
+        selectNote(midi);
+      }
+    }, {passive:false});
+    const endDrag = event => {
+      if (!activePointers.delete(event.pointerId)) return;
+      if (keyboard.hasPointerCapture(event.pointerId)) keyboard.releasePointerCapture(event.pointerId);
+      highlightHeldKeys();
+    };
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
+    keyboard.addEventListener('lostpointercapture', endDrag);
+    window.addEventListener('blur', () => { activePointers.clear(); highlightHeldKeys(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { activePointers.clear(); highlightHeldKeys(); }
+    });
     keyboard.addEventListener('click', event => {
       if (event.detail !== 0) return;
       const key = event.target.closest('.piano-key');
@@ -697,7 +721,7 @@
   function notify(message){toast.textContent=message;toast.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>toast.classList.remove('show'),3500);}
   function persist(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('fingertip-composition-v2',JSON.stringify({free:state.free,edit:state.edit,title:state.title,bpm:state.bpm}));const el=$('#saveStatus');if(el)el.textContent='已自动保存到本机';}catch{notify('本机存储已满，请先导出作品。');}},200);}
   function remember(target){undo[target].push(M.clone(state[target]));if(undo[target].length>30)undo[target].shift();}
-  function mutate(target,fn){stop();remember(target);fn(state[target]);state[target]=M.sequential(state[target]);state.cursor=Math.min(state.cursor,state[target].length-1);persist();renderCreation();}
+  function mutate(target,fn){if(state.playing)stop();remember(target);fn(state[target]);state[target]=M.sequential(state[target]);state.cursor=Math.min(state.cursor,state[target].length-1);persist();renderCreation();}
   function stop(){playToken++;timers.forEach(clearTimeout);timers=[];state.playing=false;C.stop();document.querySelectorAll('[data-action="stop"]').forEach(b=>b.disabled=true);const play=$('#playDemo');if(play){play.textContent='▶';play.setAttribute('aria-label','播放示范');}}
   function play(events,bpm=state.bpm,onStep,tempos){
     stop();if(!events.length){notify('先弹几个音，或导入一份曲谱。');return;}
