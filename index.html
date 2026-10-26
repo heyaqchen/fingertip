@@ -29,6 +29,7 @@
 .keyboard{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.piano-key{-webkit-touch-callout:none;-webkit-user-select:none}
 .timbre-control{position:relative;display:flex;align-items:center;gap:7px}.timbre-label{font-size:11px;color:#747e76}.timbre-control select{max-width:185px;min-height:38px;padding:7px 25px 7px 10px;border:1px solid #d8dfd7;border-radius:20px;background:#fffdf8;color:#34483e;font-size:11px}.timbre-control [role=status]{position:absolute;top:calc(100% + 4px);right:0;font-size:9px;color:#808a81;white-space:nowrap}.sample-credits{margin-top:28px;color:#7a827b;font-size:11px;line-height:1.8}.sample-credits summary{cursor:pointer}.sample-credits a{color:#4b6957}.topbar-right{gap:12px}.topbar-caption{display:none}@media(max-width:900px){.topbar{height:auto;min-height:100px;flex-wrap:wrap;padding-top:18px;padding-bottom:24px;gap:14px}.topbar-right{margin-left:auto}.mode-pill{order:3;margin:auto}}@media(max-width:480px){.topbar-right{width:100%;justify-content:space-between;order:2}.mode-pill{order:3;margin-top:8px}.timbre-control select{max-width:185px}}
 
+.score-expand{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer}.score-expand:hover{color:#ffb4a8}#songCard.score-expanded{grid-column:1 / -1;scroll-margin-top:18px;min-height:0}#songCard.score-expanded .v2-score-wrap{height:220px}#songCard.score-expanded #practiceScore{height:100%;width:100%;overflow:auto}#songCard.score-expanded #practiceScore svg{height:210px;min-width:100%;width:auto;max-width:none}.computer-piano{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px;font-size:11px;color:#7a847d}.computer-piano>div{display:flex;align-items:center;gap:9px}.computer-piano button{padding:5px 9px;border:1px solid #dce1d8;border-radius:6px;background:#fffdf8;color:#526459;font-size:11px}.computer-piano small{font-size:10px}.computer-key-label{position:absolute;bottom:35px;font:10px system-ui;color:#6d7970;pointer-events:none}.black .computer-key-label{bottom:29px;color:#d9e4dc}@media(hover:none) and (pointer:coarse){.computer-piano,.computer-key-label{display:none}}
 </style>
   
   
@@ -40,6 +41,7 @@
   
   
   
+
 </head>
 <body>
   <div class="page-shell">
@@ -368,9 +370,10 @@
   let demoTimers = [];
   let demoRunning = false;
   const activePointers = new Map();
+  const computerKeys = new Map();
 
   function highlightHeldKeys(fallback = selectedMidi) {
-    const notes = new Set(activePointers.values());
+    const notes = new Set([...activePointers.values(), ...computerKeys.values()]);
     if (!notes.size && fallback !== null) notes.add(fallback);
     document.querySelectorAll('.piano-key').forEach(key => {
       key.classList.toggle('active', notes.has(Number(key.dataset.midi)));
@@ -721,6 +724,9 @@
   qs('.piano-key[data-midi="60"]').classList.add('active');
   bindEvents();
   window.FTCore = {
+keyDown: (code,midi) => { if(computerKeys.has(code))return; computerKeys.set(code,midi); selectNote(midi); },
+keyUp: code => { computerKeys.delete(code); highlightHeldKeys(null); },
+clearComputerKeys: () => { computerKeys.clear(); highlightHeldKeys(null); },
     context: () => {
       if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
       return audioContext;
@@ -1075,6 +1081,20 @@
   window.ImportUI={open,load};
 })();
 
+</script>
+<script>
+(()=>{'use strict';const C=window.FTCore,card=document.querySelector('#songCard');let expanded=false;
+function decorate(){if(window.FT.state.mode!=='practice'){expanded=false;card.classList.remove('score-expanded');return;}const h=card.querySelector('h2');if(!h||h.querySelector('button'))return;const b=document.createElement('button');b.type='button';b.className='score-expand';b.setAttribute('aria-expanded',String(expanded));b.setAttribute('aria-controls','practiceScore');b.textContent=h.textContent+(expanded?' · 收起 ↙':' · 展开 ↗');h.replaceChildren(b);b.onclick=()=>{expanded=!expanded;card.classList.toggle('score-expanded',expanded);b.setAttribute('aria-expanded',String(expanded));b.textContent=(window.FT.state.mode==='practice'?'曲谱跟练':'曲谱与作品')+(expanded?' · 收起 ↙':' · 展开 ↗');if(expanded)card.scrollIntoView({behavior:'smooth',block:'start'});};}
+new MutationObserver(decorate).observe(card,{childList:true,subtree:true});decorate();
+const codes=['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK','KeyO','KeyL','KeyP','Semicolon'],labels=['A','W','S','E','D','F','T','G','Y','H','U','J','K','O','L','P',';'];let octave=4;const held=new Set(),help=document.createElement('div');help.className='computer-piano';
+help.innerHTML='<span>电脑键盘：白键 A S D F G H J K L ; · 黑键 W E T Y U O P</span><div><button type="button" data-octave="-1" aria-label="降低一个八度">− 八度</button><span class="computer-range"></span><button type="button" data-octave="1" aria-label="升高一个八度">＋ 八度</button></div><small>Z / X 切换八度 · 支持多键同按</small>';document.querySelector('.piano-toolbar').after(help);
+function refresh(){document.querySelectorAll('.computer-key-label').forEach(e=>e.remove());codes.forEach((c,i)=>{const k=document.querySelector('.piano-key[data-midi="'+(12*(octave+1)+i)+'"]');if(!k)return;const b=document.createElement('span');b.className='computer-key-label';b.textContent=labels[i];k.append(b);});help.querySelector('.computer-range').textContent='C'+octave+'–E'+(octave+1);help.querySelector('[data-octave="-1"]').disabled=octave===1;help.querySelector('[data-octave="1"]').disabled=octave===6;}
+function reset(){held.clear();C.clearComputerKeys();}
+function shift(d){reset();octave=Math.min(6,Math.max(1,octave+d));refresh();const s=document.querySelector('#keyboardScroll'),k=document.querySelector('.piano-key[data-midi="'+(12*(octave+1))+'"]');s.scrollTo({left:Math.max(0,k.offsetLeft-s.clientWidth*.15),behavior:'smooth'});}
+help.onclick=e=>{const b=e.target.closest('[data-octave]');if(b)shift(Number(b.dataset.octave));};
+function editing(t){return t?.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],dialog[open]');}
+document.addEventListener('keydown',e=>{if(e.defaultPrevented||e.ctrlKey||e.metaKey||e.altKey||e.isComposing||editing(e.target)||document.querySelector('dialog[open]'))return;if(e.code==='KeyZ'||e.code==='KeyX'){e.preventDefault();if(!e.repeat)shift(e.code==='KeyZ'?-1:1);return;}const i=codes.indexOf(e.code);if(i<0)return;e.preventDefault();if(e.repeat||held.has(e.code))return;held.add(e.code);C.keyDown(e.code,12*(octave+1)+i);});
+document.addEventListener('keyup',e=>{if(held.delete(e.code)){e.preventDefault();C.keyUp(e.code);}});window.addEventListener('blur',reset);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset();});document.addEventListener('focusin',e=>{if(editing(e.target))reset();});refresh();})();
 </script>
 </body>
 </html>
